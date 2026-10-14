@@ -1,123 +1,106 @@
 # Windsurfing Gybe Analyzer
 
-Local Garmin FIT analyzer for detailed windsurfing turn / gybe analysis.
+Local Garmin FIT analyzer for detailed windsurfing gybe/tack analysis on macOS.
 
-## Current status — v0.3.1
+## What it does
 
-Implemented:
+- imports Garmin `.FIT` files or Garmin Connect export `.ZIP` files
+- detects large direction changes from 1 Hz GPS data
+- shows entry, minimum and exit speed for every detected turn
+- calculates speed retention, course change, duration, turn distance, max turn rate and estimated effective radius
+- shows the GPS arc and speed second-by-second for every turn
+- colors the GPS arc continuously by speed: blue → green → yellow → red
+- supports keyboard navigation through turns and through second-by-second data
+- stores source files and analyses locally between app restarts
+- can classify `Gipp` vs `Tack` and draw a wind arrow when `Vind från` is supplied
 
-- Garmin `.FIT` and Garmin export `.ZIP` import.
-- Built-in FIT decoder for the activity fields needed by this project; no cloud upload.
-- 1 Hz GPS track and Garmin enhanced speed extraction.
-- Automatic detection of large tack changes / gybe candidates.
-- Per-turn metrics:
-  - entry, minimum and exit speed
-  - exit and minimum speed retention
-  - duration
-  - signed course change
-  - maximum estimated turn rate
-  - distance through the turn
-  - effective turn radius
-  - simple planing-through heuristic
-  - detection confidence
-- Session track with numbered turn markers.
-- Detailed GPS arc and second-by-second speed view.
-- Local-only browser UI.
+Everything runs locally on the Mac. Uploaded Garmin files are stored under `data/sessions/` and are not sent anywhere.
 
-The current detector deliberately calls detections **turn candidates** internally. Wind direction is not yet inferred, so a large course reversal cannot yet be reliably labelled gybe vs tack. That is planned for v0.5.
-
-## Run on macOS
+## Run
 
 ```bash
-git clone https://github.com/UlfAndreasson/windsurfing-gybe-analyzer.git
-cd windsurfing-gybe-analyzer
+cd ~/_code_local/windsurfing-gybe-analyzer
 ./run.sh
 ```
 
-`run.sh` creates `.venv`, installs the small Python dependency set and opens:
+Default URL:
 
 ```text
 http://127.0.0.1:8776
 ```
 
-Then drag a Garmin `.FIT` file or Garmin Connect export `.ZIP` into the page.
-
-Default port is `8776` so it does not collide with Portfolio Local on `8765`. Override it when needed:
+The port can be overridden:
 
 ```bash
 GYBE_PORT=8780 ./run.sh
 ```
 
-### Development
-
-After the first `./run.sh` setup:
+## Update
 
 ```bash
+cd ~/_code_local/windsurfing-gybe-analyzer
+git pull
+./run.sh
+```
+
+## Wind direction and Gipp/Tack
+
+GPS alone shows course and turn direction, but it cannot determine which end of the wind axis the wind comes from. There is a 180° ambiguity. Therefore the app only labels a turn as `Gipp` or `Tack` when **Vind från (°T)** is supplied.
+
+Example: if the wind comes from 250° true, enter `250`.
+
+The classification then uses the course at the midpoint of the actual turn:
+
+- midpoint nearest **wind-from** → Tack
+- midpoint nearest **wind-to** → Gipp
+
+The wind arrow on the GPS arc is only shown when the wind direction is known. The label states `Vind från xxx°T`; the arrowhead points downwind.
+
+## Keyboard navigation
+
+- click the **Detekterade svängar** table, then use `↑` / `↓` to step through turns
+- click a row in the **second-by-second** table, then use `↑` / `↓` to step through the selected turn
+- the selected second is highlighted in both the GPS arc and speed graph
+
+## Saved sessions
+
+Every successful analysis is automatically persisted in:
+
+```text
+data/sessions/<file-hash>/
+  source.fit | source.zip
+  analysis.json
+```
+
+The same Garmin source file reuses the same session folder. A new analysis updates `analysis.json` while keeping the original source file. Previous sessions are available from **Tidigare analyser** after restarting the app.
+
+## Direction labels
+
+- `Vänster/BB` = left / babord turn direction
+- `Höger/SB` = right / styrbord turn direction
+
+These labels describe the direction of the turn. They are separate from the manoeuvre type `Gipp` / `Tack`.
+
+## Radius
+
+`Effektiv radie` is:
+
+```text
+path length through turn / course change in radians
+```
+
+With 1 Hz GPS it is an estimate intended primarily for comparing turns with each other, not a survey-grade geometric radius.
+
+## Development
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
 ./run-dev.sh
 ```
 
-Run tests:
+## Current version
 
-```bash
-source .venv/bin/activate
-python -m unittest discover -s tests -v
-```
-
-## Detection approach
-
-The v0.3 detector is intentionally transparent and tunable:
-
-1. Convert GPS coordinates to local XY metres.
-2. Apply a small three-point position smoother.
-3. Estimate course over ground from a centred four-second baseline.
-4. Compare stable approach and exit course windows around every point.
-5. Keep course reversals above the configured threshold.
-6. De-duplicate overlapping candidates.
-7. Estimate practical turn start/end at roughly 10% / 90% of the course transition.
-8. Calculate speed retention and geometry from the original 1 Hz records.
-
-Defaults:
-
-- minimum course change: `105°`
-- minimum approach speed: `4 kt`
-- minimum exit speed: `1.5 kt`
-- planing heuristic: minimum speed `>= 8 kt`
-
-All four are exposed in the UI so they can be calibrated against real sessions.
-
-## Radius caveat
-
-Garmin EPIX Gen 2 activity GPS is normally recorded at 1 Hz. At 20 kt the board travels roughly 10 m per sample, so a highly precise instantaneous radius is not supported by the source data.
-
-The app therefore reports **effective radius**:
-
-```text
-turn path length / course change in radians
-```
-
-It is useful for comparing gybes, but should not be interpreted as centimetre-accurate geometry.
-
-## Roadmap
-
-### v0.4
-
-- Compare selected gybes, aligned around minimum speed / apex.
-- Ranking: best / worst by exit retention, minimum retention and radius.
-- Manual include/exclude for false detections.
-- Persist analysis metadata locally without modifying the original FIT.
-
-### v0.5
-
-- Infer the two dominant sailing headings and wind axis.
-- Classify gybe vs tack and port → starboard / starboard → port.
-- Manual wind-direction override.
-
-### v0.6
-
-- Multi-session history and training trends.
-- Optional map tiles behind the local XY/GPS track.
-- Export gybe table to CSV / JSON.
-
-## Privacy
-
-Activity files are processed by the local FastAPI process on `127.0.0.1`. The application does not upload Garmin activity data to a backend service.
+v0.4.0
