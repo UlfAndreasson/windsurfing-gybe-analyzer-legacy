@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.52 - 2026-10-14
+
+- Bump the cloud app and README to `v0.52` so each published build has a distinct visible version.
+- Restore the rich `Detekterade svängar` table to one body row per maneuver with all 18 values; only header labels wrap onto two lines for compactness.
+- Keep the compact synchronized `Svänglista` and selected-turn detail layout unchanged.
+- Move the zero-match `Min ingång` hint onto the same row as the slider and `0 / N svängar` count instead of showing it as a separate block below.
+- Add a separate view-only `Stallad/långsam vändning` coaching flag: planing entry, at least two consecutive samples ≤4 kt with at least one ≤3 kt, followed by sustained planing recovery within 20 s. `Misstänkt bad/fall` takes precedence.
+- Preserve the warning triangle for suspected bad/fall and use a separate amber `S` marker for stalled/slow turns.
+
 ## v0.51 - 2026-10-14
 
 - Add display-only `Min ingång` slider for filtering detected turns by entry speed without re-running analysis.
