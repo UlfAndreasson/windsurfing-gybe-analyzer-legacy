@@ -1,4 +1,4 @@
-# Windsurfing Gybe Analyzer — v0.51
+# Windsurfing Gybe Analyzer — v0.52
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
@@ -14,7 +14,7 @@ The Python/FastAPI implementation in this repository remains the reference for G
 
 The cloud app uses email/password authentication. Email auto-confirm is currently enabled because the shared/default auth sender did not reliably deliver confirmation messages. New accounts can therefore sign in immediately after signup. If a custom SMTP sender is added later, email confirmation can be enabled again.
 
-## v0.51 cloud features
+## v0.52 cloud features
 
 - imports Garmin `.FIT` files or Garmin Connect export `.ZIP` files
 - saves private sessions per user and lets you select/re-analyze earlier sessions
@@ -23,10 +23,12 @@ The cloud app uses email/password authentication. Email auto-confirm is currentl
 - shows the selected maneuver second-by-second with speed-coloured GPS arc and speed graph
 - supports `Vänster/BB` and `Höger/SB` direction labels
 - supports ↑/↓ navigation between turns and through second-by-second data
-- has a display-only `Min ingång` filter that does not re-run detection
+- has a display-only `Min ingång` filter that does not re-run detection; when no detected turn matches, the hint is shown inline on the slider row
 - estimates wind direction from stable planing courses when no manual wind is supplied
 - shows wind source/confidence and a wind arrow that points downwind
 - flags conservative `Misstänkt bad/fall` cases without asserting them as fact
+- flags `Stallad/långsam vändning` separately when a planing entry nearly stops but sustained planing returns within 20 seconds
+- shows the rich `Detekterade svängar` table as one data row per maneuver, with compact two-line header labels; the compact `Svänglista` and selected-turn detail remain separate synchronized views
 - offers System, Ljust, Mörkt and `Custom mörkt`; the existing stored value `lovable-dark` is kept for backward compatibility
 
 ## Recovery after the maneuver
@@ -46,6 +48,14 @@ If both planing and 90% entry speed are reached, the detailed GPS arc, speed gra
 The status therefore says `Ja · X s`, `Ej före nästa sväng` or `Ej före passets slut` instead of the old `Ej inom 30 s`.
 
 Existing saved analyses can use this derived recovery view from their saved full track without re-running turn detection. Entry/min/exit and raw turn detection are not silently redefined.
+
+### Slow/stalled maneuver vs bad/fall
+
+These are display-only coaching heuristics and do not change canonical turn detection:
+
+- `Misstänkt bad/fall` remains the conservative warning for a long very-slow/no-recovery case.
+- `Stallad/långsam vändning` requires entry at/above the planing threshold, at least 2 consecutive samples ≤4.0 kt around the turn (no gap >2 s), at least one sample ≤3.0 kt, and sustained planing recovery within 20 s of the min-speed/apex.
+- `Misstänkt bad/fall` takes precedence; a maneuver is never labelled as both.
 
 ## Sessionsspår and map
 
