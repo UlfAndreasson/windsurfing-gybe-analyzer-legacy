@@ -1,4 +1,4 @@
-# Windsurfing Gybe Analyzer — v0.53
+# Windsurfing Gybe Analyzer — v0.54
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
@@ -14,7 +14,7 @@ The Python/FastAPI implementation in this repository remains the reference for G
 
 The cloud app uses email/password authentication. Email auto-confirm is currently enabled because the shared/default auth sender did not reliably deliver confirmation messages. New accounts can therefore sign in immediately after signup. If a custom SMTP sender is added later, email confirmation can be enabled again.
 
-## v0.53 cloud features
+## v0.54 cloud features
 
 - imports Garmin `.FIT` files or Garmin Connect export `.ZIP` files
 - saves private sessions per user and lets you select/re-analyze earlier sessions
@@ -31,6 +31,15 @@ The cloud app uses email/password authentication. Email auto-confirm is currentl
 - shows the rich `Detekterade svängar` table as one data row per maneuver, with compact two-line header labels and a narrow status-icon column
 - keeps the compact synchronized `Svänglista` balanced across `#`, status, Typ, Riktning, Till planing and Radie*
 - offers System, Ljust, Mörkt and `Custom mörkt`; the existing stored value `lovable-dark` is kept for backward compatibility
+
+### v0.54 UI refinement
+
+- the Gipp/Tack summary card now uses plain Swedish wording: `16 gippar · 3 tack`
+- the secondary line is simply `2 osäkra · 2 okända`
+- the visible card no longer shows ambiguous `16/3`, separate `Gipp 16` / `Tack 3` labels, or `Gipp? / Tack?` splits
+- the uncertain Gipp?/Tack? split remains available only in the card tooltip/aria description
+- the card stays compact and aligned with the other summary cards
+- cloud regression suite: 59/59 tests passing
 
 ### v0.53 UI refinements
 
