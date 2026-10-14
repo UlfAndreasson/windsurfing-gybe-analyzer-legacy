@@ -1,0 +1,1 @@
+"""Windsurfing Gybe Analyzer."""

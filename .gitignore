@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.pytest_cache/
+data/*.fit
+data/*.FIT
+data/*.zip
+data/*.ZIP
+!data/.gitkeep
