@@ -2,6 +2,12 @@
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
+<p align="center">
+  <img src="docs/assets/windsurfing-gybe-analyzer.svg" alt="Windsurfing Gybe Analyzer" width="420">
+</p>
+
+The reusable black/white brand artwork is stored in [`docs/assets/windsurfing-gybe-analyzer.svg`](docs/assets/windsurfing-gybe-analyzer.svg) for README, app icon and future branding use.
+
 ## Primary runtime: cloud app
 
 The hosted app is the primary way to use Gybe Analyzer: sign in, upload Garmin `.FIT`/`.ZIP` files and keep saved sessions in the cloud.
