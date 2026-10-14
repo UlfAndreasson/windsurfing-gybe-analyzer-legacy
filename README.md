@@ -1,7 +1,7 @@
 <table>
 <tr>
 <td><h1>Windsurfing Gybe Analyzer</h1></td>
-<td align="right"><strong>Current version v0.5.1</strong></td>
+<td align="right"><strong>v0.51</strong></td>
 </tr>
 </table>
 
@@ -85,11 +85,12 @@ The wind arrow on the GPS arc is shown when the wind direction is known. The arr
 External spot/station data should be selected from the activity location, not from a hard-coded spot ID. The intended flow is:
 
 1. derive a representative GPS position / session centroid from the FIT track;
-2. look for a nearby Windguru spot or station for that latitude/longitude and activity timestamp;
-3. use matching station/forecast wind direction only as a supporting prior;
-4. compare it with the two possible GPS wind-axis directions to resolve the 180° ambiguity;
-5. show `Vindkälla` and confidence in the UI;
-6. keep manual `Vind från` as the final override.
+2. look for the nearest suitable Windguru spot or wind station for that latitude/longitude and activity timestamp;
+3. prefer a real wind station/anemometer when one is available close to the session; otherwise use the nearest suitable Windguru spot forecast;
+4. use matching station/forecast wind direction only as a supporting prior;
+5. compare it with the two possible GPS wind-axis directions to resolve the 180° ambiguity;
+6. show `Vindkälla`, station/spot name, distance and confidence in the UI;
+7. keep manual `Vind från` as the final override.
 
 For Fiskebäck, spot `1110010` and the GWC station are relevant examples, but the implementation must work worldwide and must not assume Fiskebäck.
 
