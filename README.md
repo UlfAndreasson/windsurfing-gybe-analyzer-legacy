@@ -1,9 +1,4 @@
-<table>
-<tr>
-<td><h1>Windsurfing Gybe Analyzer</h1></td>
-<td align="right"><strong>v0.51</strong></td>
-</tr>
-</table>
+# Windsurfing Gybe Analyzer — v0.51
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
