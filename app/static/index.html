@@ -4,16 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Windsurfing Gybe Analyzer</title>
-  <link rel="stylesheet" href="/static/styles.css?v=0.4.0" />
+  <link rel="stylesheet" href="/static/styles.css?v=0.5.0" />
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
         <h1>Windsurfing Gybe Analyzer</h1>
-        <p>Garmin FIT → svängdetektion → fart, kurs, radie och retention per gipp/tack.</p>
+        <p>Garmin FIT → gipp/tack → fart, radie, retention och återacceleration.</p>
       </div>
-      <span class="version">v0.4.0</span>
+      <span class="version">v0.5.0</span>
     </header>
 
     <section class="panel import-panel">
@@ -32,9 +32,9 @@
         <label>Ingång minst <input id="entrySpeed" type="number" value="4" min="0" max="40" step="0.5"> kt</label>
         <label>Exit minst <input id="exitSpeed" type="number" value="1.5" min="0" max="40" step="0.5"> kt</label>
         <label>Planing-gräns <input id="planningSpeed" type="number" value="8" min="0" max="40" step="0.5"> kt</label>
-        <label>Vind från <input id="windFrom" type="number" min="0" max="359" step="1" placeholder="t.ex. 250"> °T</label>
+        <label>Vind från <input id="windFrom" type="number" min="0" max="359" step="1" placeholder="auto"> °T</label>
       </div>
-      <p class="setting-note">Vindriktning behövs för säker klassning Gipp/Tack och för vindpilen. Utan den visar appen typen som Okänd.</p>
+      <p class="setting-note">Lämna vind tom: appen uppskattar vindriktningen från de två dominerande planingsbogarna och svängarna. Ange grader här för manuell override.</p>
       <div class="actions">
         <span id="filename">Ingen fil vald</span>
         <button id="analyzeBtn" disabled>Analysera</button>
@@ -59,16 +59,16 @@
           <span class="hint">Klicka i tabellen och använd ↑/↓.</span>
         </div>
         <div class="table-wrap"><table id="gybeTable" tabindex="0" aria-label="Detekterade svängar">
-          <thead><tr><th>#</th><th>Tid</th><th>Typ</th><th>Riktning</th><th>In</th><th>Min</th><th>Ut</th><th>Ut/In</th><th>Δ kurs</th><th>Tid</th><th>Radie*</th><th>Confidence</th></tr></thead>
+          <thead><tr><th>#</th><th>Tid</th><th>Typ</th><th>Riktning</th><th>In</th><th>Min</th><th>Ut</th><th>Ut/In</th><th>Till planing</th><th>90% In</th><th>Δ kurs</th><th>Tid</th><th>Radie*</th><th>Confidence</th></tr></thead>
           <tbody></tbody>
         </table></div>
-        <p class="footnote">* Effektiv radie = sträcka genom svängen / kursändring i radianer. Med 1 Hz GPS är den en uppskattning.</p>
+        <p class="footnote">Till planing mäts från minfarten till minst planing-gränsen i tre sammanhängande GPS-punkter. * Radien är uppskattad med 1 Hz GPS.</p>
       </section>
 
       <section id="detailPanel" class="panel hidden">
         <div class="section-heading">
           <div><h2 id="detailTitle">Gipp</h2><p id="detailSubtitle"></p></div>
-          <span class="hint">Klicka på en sekundrad nedan och använd ↑/↓ för att stega genom svängen.</span>
+          <span class="hint">Klicka på en sekundrad nedan och använd ↑/↓ för att stega genom sväng + återhämtning.</span>
         </div>
         <div id="detailMetrics" class="summary-grid compact"></div>
         <div class="detail-grid">
@@ -86,6 +86,6 @@
       </section>
     </section>
   </main>
-  <script src="/static/app.js?v=0.4.0"></script>
+  <script src="/static/app.js?v=0.5.0"></script>
 </body>
 </html>
