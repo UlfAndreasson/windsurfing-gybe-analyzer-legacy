@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.53 - 2026-10-14
+
+- Increase session metadata readability and keep responsive wrapping.
+- Move `Vänd vind 180°` into `Analysinställningar` and remove the visible `Sparad i molnet` badge without changing cloud-save behavior.
+- Keep the rich `Detekterade svängar` table at one maneuver per row while narrowing the status icon column and distributing remaining columns more evenly.
+- Balance the compact `Svänglista` column widths and padding while preserving synchronized selection, keyboard navigation and status markers.
+- Rename the maneuver-path view from `Svängens GPS-ark` to `Svängspår`.
+- Add maneuver-focused initial framing plus `+`, `−`, wheel/trackpad zoom, pan and `Återställ` for `Svängspår`; zoom is display-only and preserves speed colours, wind overlay and second navigation.
+- Verify 57/57 cloud regression tests and saved-session browser checks at 1440 and 1280 px without page-level horizontal overflow.
+
 ## v0.52 - 2026-10-14
 
 - Bump the cloud app and README to `v0.52` so each published build has a distinct visible version.
