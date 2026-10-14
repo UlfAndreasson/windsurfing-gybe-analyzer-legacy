@@ -19,7 +19,7 @@ STATIC_DIR = BASE_DIR / "static"
 SESSIONS_DIR = PROJECT_DIR / "data" / "sessions"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 SESSION_ID_RE = re.compile(r"^[0-9a-f]{16}$")
-VERSION = "0.4.0"
+VERSION = "0.5.0"
 
 SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -87,7 +87,6 @@ def _save_session(payload: bytes, filename: str, result: dict) -> dict:
     folder.mkdir(parents=True, exist_ok=True)
     suffix = ".zip" if filename.lower().endswith(".zip") else ".fit"
 
-    # Keep exactly one original source file for the session.
     for old in folder.glob("source.*"):
         if old.suffix.lower() != suffix:
             old.unlink(missing_ok=True)
