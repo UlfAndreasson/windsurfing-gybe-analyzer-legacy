@@ -70,16 +70,12 @@ def _prepare_geometry(points: list[TrackPoint]) -> list[_PreparedPoint]:
     prepared = _local_xy(points)
     n = len(prepared)
 
-    # Three-point coordinate smoothing removes much of the 1 Hz GPS jitter without
-    # hiding the overall shape of a gybe.
     for i, point in enumerate(prepared):
         lo = max(0, i - 1)
         hi = min(n, i + 2)
         point.smooth_x = _mean([prepared[j].x for j in range(lo, hi)])
         point.smooth_y = _mean([prepared[j].y for j in range(lo, hi)])
 
-    # Course over ground from a four-second centred baseline. At very low speed
-    # the GPS course is intentionally left undefined rather than inventing a heading.
     for i in range(2, n - 2):
         before = prepared[i - 2]
         after = prepared[i + 2]
@@ -91,7 +87,6 @@ def _prepare_geometry(points: list[TrackPoint]) -> list[_PreparedPoint]:
             continue
         prepared[i].course = normalize_degrees(math.degrees(math.atan2(dx, dy)))
 
-    # Signed turn rate from neighbouring course samples.
     for i in range(3, n - 3):
         a = prepared[i - 1]
         b = prepared[i + 1]
@@ -123,7 +118,7 @@ def _course_mean(prepared: list[_PreparedPoint], indices: range, min_speed: floa
 
 def _path_length(prepared: list[_PreparedPoint], start: int, end: int) -> float:
     total = 0.0
-    for i in range(start, end):
+    for i in range(max(0, start), min(end, len(prepared) - 1)):
         total += math.hypot(prepared[i + 1].x - prepared[i].x, prepared[i + 1].y - prepared[i].y)
     return total
 
@@ -141,7 +136,6 @@ def _confidence(entry: float, exit_: float, course_change: float, duration: floa
 def _actual_turn_change(
     prepared: list[_PreparedPoint], candidate: int, pre_course: float, post_course: float
 ) -> float:
-    """Prefer measured turn-rate sign when a near-180 degree turn is directionally ambiguous."""
     shortest = angular_difference(pre_course, post_course)
     local_rates = [
         prepared[j].turn_rate
@@ -155,12 +149,6 @@ def _actual_turn_change(
 
 
 def classify_maneuver(pre_course: float, signed_change: float, wind_from_deg: float | None) -> dict:
-    """Classify a turn if true wind direction (where the wind comes from) is known.
-
-    The midpoint of a tack is close to wind-from; the midpoint of a gybe is close to
-    wind-to (wind-from + 180). Without wind direction GPS alone has a 180° ambiguity,
-    so the manoeuvre is intentionally left unknown.
-    """
     midpoint = normalize_degrees(pre_course + signed_change / 2.0)
     if wind_from_deg is None:
         return {"maneuver": "unknown", "turn_mid_course_deg": round(midpoint, 1)}
@@ -179,6 +167,175 @@ def classify_maneuver(pre_course: float, signed_change: float, wind_from_deg: fl
     }
 
 
+def _first_sustained_speed(
+    prepared: list[_PreparedPoint],
+    start: int,
+    threshold_kt: float,
+    *,
+    max_seconds: float = 30.0,
+    samples: int = 3,
+) -> int | None:
+    if not prepared or start >= len(prepared):
+        return None
+    start = max(0, start)
+    start_time = prepared[start].source.timestamp
+    for i in range(start, len(prepared) - samples + 1):
+        if prepared[i].source.timestamp - start_time > max_seconds:
+            break
+        window = prepared[i : i + samples]
+        if any(window[j + 1].source.timestamp - window[j].source.timestamp > 2 for j in range(len(window) - 1)):
+            continue
+        if all(p.source.speed_kt >= threshold_kt for p in window):
+            return i
+    return None
+
+
+def _speed_near_seconds(prepared: list[_PreparedPoint], start: int, seconds: float) -> float | None:
+    if start >= len(prepared):
+        return None
+    target = prepared[start].source.timestamp + seconds
+    candidates = [
+        p
+        for p in prepared[start : min(len(prepared), start + int(seconds) + 8)]
+        if abs(p.source.timestamp - target) <= 1.25
+    ]
+    if not candidates:
+        return None
+    return min(candidates, key=lambda p: abs(p.source.timestamp - target)).source.speed_kt
+
+
+def _recovery_metrics(
+    prepared: list[_PreparedPoint],
+    apex: int,
+    end: int,
+    entry_speed: float,
+    planning_threshold_kt: float,
+) -> dict:
+    planning_idx = (
+        apex
+        if prepared[apex].source.speed_kt >= planning_threshold_kt
+        else _first_sustained_speed(prepared, apex, planning_threshold_kt)
+    )
+    target_90 = max(planning_threshold_kt, entry_speed * 0.90)
+    ninety_idx = (
+        apex
+        if prepared[apex].source.speed_kt >= target_90
+        else _first_sustained_speed(prepared, apex, target_90)
+    )
+
+    def elapsed(idx: int | None, origin: int) -> float | None:
+        return None if idx is None else max(0.0, prepared[idx].source.timestamp - prepared[origin].source.timestamp)
+
+    speed5 = _speed_near_seconds(prepared, apex, 5.0)
+    speed10 = _speed_near_seconds(prepared, apex, 10.0)
+    return {
+        "time_to_planing_s": round(elapsed(planning_idx, apex), 1) if planning_idx is not None else None,
+        "time_from_turn_end_to_planing_s": round(elapsed(planning_idx, end), 1) if planning_idx is not None else None,
+        "distance_to_planing_m": round(_path_length(prepared, apex, planning_idx), 1) if planning_idx is not None else None,
+        "time_to_90pct_entry_s": round(elapsed(ninety_idx, apex), 1) if ninety_idx is not None else None,
+        "speed_5s_after_kt": round(speed5, 2) if speed5 is not None else None,
+        "speed_10s_after_kt": round(speed10, 2) if speed10 is not None else None,
+        "planning_recovered": planning_idx is not None,
+        "planning_recovery_index": planning_idx,
+        "entry90_recovery_index": ninety_idx,
+    }
+
+
+def _wind_course_clusters(
+    prepared: list[_PreparedPoint], planning_threshold_kt: float
+) -> tuple[float, float, int] | None:
+    stable = [
+        p
+        for p in prepared
+        if p.course is not None
+        and p.source.speed_kt >= max(6.0, planning_threshold_kt)
+        and (p.turn_rate is None or abs(p.turn_rate) <= 4.0)
+    ]
+    if len(stable) < 30:
+        return None
+
+    bins = [0.0] * 36
+    for p in stable:
+        bins[int((p.course or 0.0) // 10) % 36] += max(1.0, p.source.speed_kt)
+    first_bin = max(range(36), key=lambda i: bins[i])
+    first_center = first_bin * 10.0 + 5.0
+    allowed = [
+        i
+        for i in range(36)
+        if 70.0 <= abs(angular_difference(first_center, i * 10.0 + 5.0)) <= 180.0
+    ]
+    if not allowed:
+        return None
+    second_bin = max(allowed, key=lambda i: bins[i])
+    second_center = second_bin * 10.0 + 5.0
+
+    group1 = [
+        p.course
+        for p in stable
+        if p.course is not None and abs(angular_difference(first_center, p.course)) <= 35.0
+    ]
+    group2 = [
+        p.course
+        for p in stable
+        if p.course is not None and abs(angular_difference(second_center, p.course)) <= 35.0
+    ]
+    if len(group1) < 10 or len(group2) < 10:
+        return None
+    c1 = circular_mean(group1)
+    c2 = circular_mean(group2)
+    if c1 is None or c2 is None:
+        return None
+    separation = abs(angular_difference(c1, c2))
+    if separation < 70.0:
+        return None
+    return c1, c2, len(stable)
+
+
+def _wind_orientation_score(gybes: list[dict], wind_from: float) -> float:
+    score = 0.0
+    for g in gybes:
+        classification = classify_maneuver(g["entry_course_deg"], g["course_change_deg"], wind_from)
+        quality = min(1.0, max(0.0, g["min_speed_kt"] / max(g["entry_speed_kt"], 1.0)))
+        if classification["maneuver"] == "gybe":
+            score += (quality - 0.22) + 0.08
+        else:
+            score += 0.42 - quality
+    return score
+
+
+def estimate_wind(prepared: list[_PreparedPoint], gybes: list[dict], planning_threshold_kt: float) -> dict:
+    clusters = _wind_course_clusters(prepared, planning_threshold_kt)
+    if clusters is None:
+        return {"from_deg": None, "to_deg": None, "source": "unknown", "confidence": 0}
+
+    c1, c2, sample_count = clusters
+    delta = angular_difference(c1, c2)
+    bisector = normalize_degrees(c1 + delta / 2.0)
+    candidate_a = bisector
+    candidate_b = normalize_degrees(bisector + 180.0)
+
+    score_a = _wind_orientation_score(gybes, candidate_a)
+    score_b = _wind_orientation_score(gybes, candidate_b)
+    chosen = candidate_a if score_a >= score_b else candidate_b
+    score_gap = abs(score_a - score_b)
+    separation = abs(delta)
+
+    cluster_quality = max(0.0, 1.0 - abs(separation - 140.0) / 100.0)
+    sample_quality = min(1.0, sample_count / 300.0)
+    orientation_quality = min(1.0, score_gap / max(2.0, len(gybes) * 0.35)) if gybes else 0.15
+    confidence = int(round(100.0 * (0.45 * cluster_quality + 0.30 * sample_quality + 0.25 * orientation_quality)))
+
+    return {
+        "from_deg": round(chosen, 1),
+        "to_deg": round(normalize_degrees(chosen + 180.0), 1),
+        "source": "estimated",
+        "confidence": max(10, min(95, confidence)),
+        "reach_courses_deg": [round(c1, 1), round(c2, 1)],
+        "course_separation_deg": round(separation, 1),
+        "stable_samples": sample_count,
+    }
+
+
 def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) -> dict:
     if len(points) < 25:
         raise ValueError("För få GPS-punkter för svänganalys")
@@ -189,10 +346,6 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
 
     scores = [0.0] * n
     references: dict[int, tuple[float, float, float, float]] = {}
-
-    # A windsurfing gybe/tack appears as two stable runs separated by a large course
-    # change. Compare the approach and exit courses instead of relying on noisy GPS
-    # heading at the lowest-speed point in the middle of the manoeuvre.
     for i in range(10, n - 10):
         if prepared[i + 8].source.timestamp - prepared[i - 8].source.timestamp > 20:
             continue
@@ -272,12 +425,22 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
             prepared[j + 1].source.timestamp - prepared[j].source.timestamp <= 2 for j in range(start, end)
         )
 
+        recovery = _recovery_metrics(prepared, apex, end, entry_speed, settings.planning_threshold_kt)
+        planning_idx = recovery.pop("planning_recovery_index")
+        ninety_idx = recovery.pop("entry90_recovery_index")
+        recovery_indices = [idx for idx in (planning_idx, ninety_idx) if idx is not None]
         detail_start = max(0, start - 5)
-        detail_end = min(n - 1, end + 5)
+        detail_end = min(n - 1, max([end + 15, *recovery_indices]))
         detail_points: list[dict] = []
         apex_time = prepared[apex].source.timestamp
         for j in range(detail_start, detail_end + 1):
             p = prepared[j]
+            if start <= j <= end:
+                phase = "turn"
+            elif j > end:
+                phase = "recovery"
+            else:
+                phase = "context"
             detail_points.append(
                 {
                     "t": p.source.timestamp - apex_time,
@@ -289,20 +452,20 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
                     "speed_kt": round(p.source.speed_kt, 2),
                     "course_deg": round(p.course, 1) if p.course is not None else None,
                     "turn_rate_dps": round(p.turn_rate, 1) if p.turn_rate is not None else None,
-                    "phase": "turn" if start <= j <= end else "context",
+                    "phase": phase,
                 }
             )
 
         entry_retention = (exit_speed / entry_speed * 100.0) if entry_speed > 0.1 else None
         min_retention = (min_speed / entry_speed * 100.0) if entry_speed > 0.1 else None
-        classification = classify_maneuver(pre_course, signed_change, settings.wind_from_deg)
         gybes.append(
             {
                 "id": len(gybes) + 1,
                 "candidate_index": candidate,
                 "time_utc": prepared[candidate].source.time_utc.isoformat(),
                 "direction": "right" if signed_change > 0 else "left",
-                **classification,
+                "maneuver": "unknown",
+                "turn_mid_course_deg": round(normalize_degrees(pre_course + signed_change / 2.0), 1),
                 "entry_course_deg": round(pre_course, 1),
                 "exit_course_deg": round(post_course, 1),
                 "entry_speed_kt": round(entry_speed, 2),
@@ -317,6 +480,7 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
                 "max_turn_rate_dps": round(max_turn_rate, 1) if max_turn_rate is not None else None,
                 "planning_through": min_speed >= settings.planning_threshold_kt,
                 "confidence": _confidence(entry_speed, exit_speed, signed_change, duration, gap_free),
+                **recovery,
                 "center": {
                     "lat": round(prepared[candidate].source.lat, 7),
                     "lon": round(prepared[candidate].source.lon, 7),
@@ -327,10 +491,29 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
             }
         )
 
+    if settings.wind_from_deg is not None:
+        wind_from = normalize_degrees(settings.wind_from_deg)
+        wind = {
+            "from_deg": round(wind_from, 1),
+            "to_deg": round(normalize_degrees(wind_from + 180.0), 1),
+            "source": "manual",
+            "confidence": 100,
+        }
+    else:
+        wind = estimate_wind(prepared, gybes, settings.planning_threshold_kt)
+        wind_from = wind.get("from_deg")
+
+    for g in gybes:
+        g.update(classify_maneuver(g["entry_course_deg"], g["course_change_deg"], wind_from))
+
     start_time = points[0].time_utc
     end_time = points[-1].time_utc
     distance_candidates = [p.distance_m for p in points if p.distance_m is not None]
-    distance_m = max(distance_candidates) - min(distance_candidates) if distance_candidates else _path_length(prepared, 0, n - 1)
+    distance_m = (
+        max(distance_candidates) - min(distance_candidates)
+        if distance_candidates
+        else _path_length(prepared, 0, n - 1)
+    )
     max_speed = max(p.speed_kt for p in points)
     moving_speeds = [p.speed_kt for p in points if p.speed_kt > 0.5]
 
@@ -346,7 +529,6 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
         for p in prepared
     ]
 
-    wind_from = normalize_degrees(settings.wind_from_deg) if settings.wind_from_deg is not None else None
     return {
         "summary": {
             "start_utc": start_time.isoformat(),
@@ -368,11 +550,7 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
             "planning_threshold_kt": settings.planning_threshold_kt,
             "wind_from_deg": round(wind_from, 1) if wind_from is not None else None,
         },
-        "wind": {
-            "from_deg": round(wind_from, 1) if wind_from is not None else None,
-            "to_deg": round(normalize_degrees(wind_from + 180.0), 1) if wind_from is not None else None,
-            "source": "manual" if wind_from is not None else "unknown",
-        },
+        "wind": wind,
         "track": track,
         "gybes": gybes,
     }
