@@ -2,37 +2,100 @@
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
-## Primary runtime: Lovable cloud app
+## Primary runtime: cloud app
 
-The **Lovable-hosted web app is the primary way to use Gybe Analyzer**: sign in, upload Garmin `.FIT`/`.ZIP` files and keep saved sessions in the cloud.
+The hosted app is the primary way to use Gybe Analyzer: sign in, upload Garmin `.FIT`/`.ZIP` files and keep saved sessions in the cloud.
 
-The Python/FastAPI implementation in this repository remains the canonical reference for the analysis logic and can still be run locally on macOS as a fallback, for testing, or if the cloud app is unavailable.
+Live app: `https://windsurfing-gybe-analyzer.lovable.app`
 
-The normal development workflow is Git/GitHub/GitHub Actions first. Lovable should be used only for Lovable-specific runtime, authentication/backend integration and publishing tasks.
+The Python/FastAPI implementation in this repository remains the reference for Garmin parsing and raw turn detection and can still be run locally on macOS as a fallback. Cloud-only presentation logic may derive additional information from the saved full track without mutating the canonical turn results.
 
 ### Authentication
 
-The cloud app uses email/password authentication. Email auto-confirm is currently enabled because the shared/default auth mail sender did not reliably deliver confirmation messages. New accounts can therefore sign in immediately after signup without waiting for a confirmation email. If a custom SMTP sender is added later, email confirmation can be enabled again.
+The cloud app uses email/password authentication. Email auto-confirm is currently enabled because the shared/default auth sender did not reliably deliver confirmation messages. New accounts can therefore sign in immediately after signup. If a custom SMTP sender is added later, email confirmation can be enabled again.
 
-## What it does
+## v0.51 cloud features
 
 - imports Garmin `.FIT` files or Garmin Connect export `.ZIP` files
-- detects large direction changes from 1 Hz GPS data
-- shows entry, minimum and exit speed for every detected turn
-- calculates speed retention, course change, duration, turn distance, max turn rate and estimated effective radius
-- shows the GPS arc and speed second-by-second for every turn
-- measures recovery after the turn: time/distance back to planing, time to 90% of entry speed and speed at +5/+10 seconds
-- estimates wind direction automatically, with optional manual `Vind från` override
-- can classify `Gipp` vs `Tack` when wind direction is known
-- supports a display-only `Min ingång` filter without re-running detection
-- supports keyboard navigation through turns and through second-by-second data
-- stores source files and analyses locally between app restarts in the local fallback version
+- saves private sessions per user and lets you select/re-analyze earlier sessions
+- detects large course changes from 1 Hz GPS data
+- shows entry, minimum and exit speed, retention, course change, turn distance, max turn rate and estimated effective radius
+- shows the selected maneuver second-by-second with speed-coloured GPS arc and speed graph
+- supports `Vänster/BB` and `Höger/SB` direction labels
+- supports ↑/↓ navigation between turns and through second-by-second data
+- has a display-only `Min ingång` filter that does not re-run detection
+- estimates wind direction from stable planing courses when no manual wind is supplied
+- shows wind source/confidence and a wind arrow that points downwind
+- flags conservative `Misstänkt bad/fall` cases without asserting them as fact
+- offers System, Ljust, Mörkt and `Custom mörkt`; the existing stored value `lovable-dark` is kept for backward compatibility
+
+## Recovery after the maneuver
+
+The cloud UI no longer stops the recovery view at 30 seconds.
+
+For each detected turn it derives recovery from the saved full session track, bounded by the **next detected maneuver or the end of the session**:
+
+- sustained planing = 3 consecutive samples at/above the planing threshold, with no gap greater than 2 s
+- time and distance back to planing
+- time from turn end to planing
+- time to 90% of entry speed
+- speed at +5 s and +10 s
+
+If both planing and 90% entry speed are reached, the detailed GPS arc, speed graph and second-by-second table continue for at least 10 seconds after the later marker, without passing the next maneuver/session boundary. If either target is not reached, the detail continues all the way to that boundary.
+
+The status therefore says `Ja · X s`, `Ej före nästa sväng` or `Ej före passets slut` instead of the old `Ej inom 30 s`.
+
+Existing saved analyses can use this derived recovery view from their saved full track without re-running turn detection. Entry/min/exit and raw turn detection are not silently redefined.
+
+## Sessionsspår and map
+
+The cloud app shows the full FIT track on a geographic map using Leaflet and OpenStreetMap tiles:
+
+- activity bounds fitted automatically
+- speed-coloured track
+- clickable maneuver markers
+- selected maneuver highlighted
+- wind-direction overlay
+- SVG track fallback if Leaflet/map tiles fail
+
+### Map privacy
+
+The FIT/ZIP file and full track are not uploaded to the map provider; the track is drawn locally in the browser. Loading map tiles makes normal tile requests to OpenStreetMap's tile servers, which reveal the approximate viewed area through tile coordinates/zoom and the viewer's IP address, as with a normal web map.
+
+## Wind direction and Gipp/Tack
+
+GPS course data identifies the wind **axis** well but cannot always resolve which end of that axis is wind-from versus wind-to. That is an inherent 180° ambiguity.
+
+The cloud display therefore classifies a maneuver using course samples through the actual turn rather than only the midpoint:
+
+- ignore noisy COG samples below roughly 3 kt
+- closest passage to **wind-from** → Tack / head-to-wind
+- closest passage to **wind-to** → Gipp / downwind
+- confidence combines wind confidence, closest-passage error and how clearly one axis end is closer
+- uncertain results are shown as `Gipp?`, `Tack?` or `Okänd`
+
+For non-strong automatic estimates the opposite axis direction is also shown, e.g. `Vind ≈72°T (alt 252°T)`.
+
+`Vänd vind 180°` applies the opposite direction as a manual override and re-runs the active session so all Gipp/Tack labels can be corrected together. Clearing the manual wind field returns to automatic estimation.
+
+## External wind-data enrichment
+
+FIT data contains latitude/longitude and the activity timestamp, so a future supported external wind lookup must work from the **session location + session time**, worldwide.
+
+Preferred future source order:
+
+1. nearest suitable real wind station/anemometer covering the activity time
+2. nearest suitable forecast spot covering the activity time
+3. GPS-derived estimate
+4. manual `Vind från` remains the final override
+
+For Fiskebäck, Windguru spot `1110010` and the GWC station are relevant examples, but nothing in the application logic should assume Fiskebäck.
+
+No automatic Windguru lookup is currently implemented because a stable credential-free discovery + historical-data API for arbitrary nearby stations/spots has not been verified. Current forecast data must never be silently applied to an old session.
 
 ## Local Mac fallback
 
-You do **not** need these commands to use the cloud/Lovable app.
-
-Use them only if you want or need to run the analyzer locally:
+You do **not** need these commands to use the cloud app. Use them only if you want or need to run the local fallback:
 
 ```bash
 cd ~/_code_local/windsurfing-gybe-analyzer
@@ -40,81 +103,19 @@ git pull
 ./run.sh
 ```
 
-- `git pull` downloads the latest repository changes to the Mac.
-- `./run.sh` starts the local analyzer at `http://127.0.0.1:8776`.
+The local app starts at:
 
-The port can be overridden:
+```text
+http://127.0.0.1:8776
+```
+
+Override the port if needed:
 
 ```bash
 GYBE_PORT=8780 ./run.sh
 ```
 
-Everything in the local version runs on the Mac. Uploaded Garmin files are stored under `data/sessions/` and are not sent anywhere.
-
-## Detection threshold vs display filter
-
-These are intentionally separate controls:
-
-- `Ingång minst` affects analysis/detection and therefore requires analysis/re-analysis.
-- `Min ingång` only filters already detected turns in the UI; it does not alter the analysis.
-
-The display filter applies consistently to map markers, the turn table and `↑` / `↓` navigation.
-
-## Wind direction and Gipp/Tack
-
-The FIT track contains GPS latitude/longitude positions, so the app can determine where the session happened and use that location when looking for external wind data.
-
-GPS alone shows course and turn direction but has a 180° wind-axis ambiguity. The analyzer can estimate the wind direction automatically from stable planing courses. A manually supplied **Vind från (°T)** overrides that estimate.
-
-Example: if the wind comes from 250° true, enter `250`.
-
-When wind direction is known, the turn midpoint is compared with the wind axis:
-
-- midpoint nearest **wind-from** → Tack
-- midpoint nearest **wind-to** → Gipp
-
-The wind arrow on the GPS arc is shown when the wind direction is known. The arrowhead points downwind.
-
-### External wind-data enrichment
-
-External spot/station data should be selected from the activity location, not from a hard-coded spot ID. The intended flow is:
-
-1. derive a representative GPS position / session centroid from the FIT track;
-2. look for the nearest suitable Windguru spot or wind station for that latitude/longitude and activity timestamp;
-3. prefer a real wind station/anemometer when one is available close to the session; otherwise use the nearest suitable Windguru spot forecast;
-4. use matching station/forecast wind direction only as a supporting prior;
-5. compare it with the two possible GPS wind-axis directions to resolve the 180° ambiguity;
-6. show `Vindkälla`, station/spot name, distance and confidence in the UI;
-7. keep manual `Vind från` as the final override.
-
-For Fiskebäck, spot `1110010` and the GWC station are relevant examples, but the implementation must work worldwide and must not assume Fiskebäck.
-
-For historical sessions, only use external data when a matching historical observation/forecast is actually available for the activity timestamp. Current forecast data must never be silently applied to an old session.
-
-## Keyboard navigation
-
-- click the **Detekterade svängar** table, then use `↑` / `↓` to step through turns
-- click a row in the **second-by-second** table, then use `↑` / `↓` to step through the selected turn
-- the selected second is highlighted in both the GPS arc and speed graph
-
-## Saved sessions
-
-Every successful local analysis is automatically persisted in:
-
-```text
-data/sessions/<file-hash>/
-  source.fit | source.zip
-  analysis.json
-```
-
-The same Garmin source file reuses the same session folder. A new analysis updates `analysis.json` while keeping the original source file. Previous sessions are available from **Tidigare analyser** after restarting the local app.
-
-## Direction labels
-
-- `Vänster/BB` = left / babord turn direction
-- `Höger/SB` = right / styrbord turn direction
-
-These labels describe the direction of the turn. They are separate from the manoeuvre type `Gipp` / `Tack`.
+Local uploads are stored under `data/sessions/` and remain on the Mac.
 
 ## Radius
 
@@ -128,9 +129,7 @@ With 1 Hz GPS it is an estimate intended primarily for comparing turns with each
 
 ## Development
 
-Prefer normal Git/GitHub/GitHub Actions workflows for code, tests, CI and documentation. Lovable should only be used for Lovable-specific runtime, backend/integration and publishing tasks.
-
-Functional changes should update the relevant README/CHANGELOG/docs in the same workstream.
+Prefer Git/GitHub/GitHub Actions for code, tests, CI and documentation. Use Lovable only for cloud-runtime/backend/integration/publishing work that needs it. Functional changes should update README/CHANGELOG/docs in the same workstream.
 
 ```bash
 python3 -m venv .venv
