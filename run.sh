@@ -5,6 +5,7 @@ if [[ ! -d .venv ]]; then
   python3 -m venv .venv
 fi
 source .venv/bin/activate
+export PIP_DISABLE_PIP_VERSION_CHECK=1
 python -m pip install -q -r requirements.txt
 PORT="${GYBE_PORT:-8776}"
 (( sleep 1; open "http://127.0.0.1:${PORT}" ) &)
