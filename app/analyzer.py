@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from statistics import median
 from typing import Iterable
 
 from .fitlite import TrackPoint
@@ -17,6 +16,7 @@ class AnalyzerSettings:
     min_exit_speed_kt: float = 1.5
     planning_threshold_kt: float = 8.0
     dedupe_seconds: float = 15.0
+    wind_from_deg: float | None = None
 
 
 @dataclass(slots=True)
@@ -28,6 +28,10 @@ class _PreparedPoint:
     smooth_y: float = 0.0
     course: float | None = None
     turn_rate: float | None = None
+
+
+def normalize_degrees(value: float) -> float:
+    return value % 360.0
 
 
 def angular_difference(start_deg: float, end_deg: float) -> float:
@@ -43,7 +47,7 @@ def circular_mean(values: Iterable[float]) -> float | None:
     sy = sum(math.cos(math.radians(v)) for v in vals)
     if abs(sx) < 1e-12 and abs(sy) < 1e-12:
         return None
-    return (math.degrees(math.atan2(sx, sy)) + 360.0) % 360.0
+    return normalize_degrees(math.degrees(math.atan2(sx, sy)))
 
 
 def _mean(values: list[float]) -> float:
@@ -85,7 +89,7 @@ def _prepare_geometry(points: list[TrackPoint]) -> list[_PreparedPoint]:
         dy = after.smooth_y - before.smooth_y
         if math.hypot(dx, dy) < 4.0:
             continue
-        prepared[i].course = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
+        prepared[i].course = normalize_degrees(math.degrees(math.atan2(dx, dy)))
 
     # Signed turn rate from neighbouring course samples.
     for i in range(3, n - 3):
@@ -134,7 +138,51 @@ def _confidence(entry: float, exit_: float, course_change: float, duration: floa
     return max(0, min(100, score))
 
 
+def _actual_turn_change(
+    prepared: list[_PreparedPoint], candidate: int, pre_course: float, post_course: float
+) -> float:
+    """Prefer measured turn-rate sign when a near-180 degree turn is directionally ambiguous."""
+    shortest = angular_difference(pre_course, post_course)
+    local_rates = [
+        prepared[j].turn_rate
+        for j in range(max(0, candidate - 6), min(len(prepared), candidate + 7))
+        if prepared[j].turn_rate is not None and abs(prepared[j].turn_rate) <= 120.0
+    ]
+    rate_signal = sum(local_rates) if local_rates else 0.0
+    if abs(rate_signal) >= 2.0:
+        return (1.0 if rate_signal > 0 else -1.0) * abs(shortest)
+    return shortest
+
+
+def classify_maneuver(pre_course: float, signed_change: float, wind_from_deg: float | None) -> dict:
+    """Classify a turn if true wind direction (where the wind comes from) is known.
+
+    The midpoint of a tack is close to wind-from; the midpoint of a gybe is close to
+    wind-to (wind-from + 180). Without wind direction GPS alone has a 180° ambiguity,
+    so the manoeuvre is intentionally left unknown.
+    """
+    midpoint = normalize_degrees(pre_course + signed_change / 2.0)
+    if wind_from_deg is None:
+        return {"maneuver": "unknown", "turn_mid_course_deg": round(midpoint, 1)}
+
+    wind_from = normalize_degrees(wind_from_deg)
+    wind_to = normalize_degrees(wind_from + 180.0)
+    to_from = abs(angular_difference(midpoint, wind_from))
+    to_to = abs(angular_difference(midpoint, wind_to))
+    maneuver = "tack" if to_from <= to_to else "gybe"
+    return {
+        "maneuver": maneuver,
+        "turn_mid_course_deg": round(midpoint, 1),
+        "wind_from_deg": round(wind_from, 1),
+        "wind_to_deg": round(wind_to, 1),
+        "wind_alignment_error_deg": round(min(to_from, to_to), 1),
+    }
+
+
 def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) -> dict:
+    if len(points) < 25:
+        raise ValueError("För få GPS-punkter för svänganalys")
+
     settings = settings or AnalyzerSettings()
     prepared = _prepare_geometry(points)
     n = len(prepared)
@@ -183,7 +231,7 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
     gybes: list[dict] = []
     for candidate in selected:
         pre_course, post_course, _, _ = references[candidate]
-        signed_change = angular_difference(pre_course, post_course)
+        signed_change = _actual_turn_change(prepared, candidate, pre_course, post_course)
         direction_sign = 1.0 if signed_change >= 0 else -1.0
         total_change = abs(signed_change)
 
@@ -247,12 +295,16 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
 
         entry_retention = (exit_speed / entry_speed * 100.0) if entry_speed > 0.1 else None
         min_retention = (min_speed / entry_speed * 100.0) if entry_speed > 0.1 else None
+        classification = classify_maneuver(pre_course, signed_change, settings.wind_from_deg)
         gybes.append(
             {
                 "id": len(gybes) + 1,
                 "candidate_index": candidate,
                 "time_utc": prepared[candidate].source.time_utc.isoformat(),
                 "direction": "right" if signed_change > 0 else "left",
+                **classification,
+                "entry_course_deg": round(pre_course, 1),
+                "exit_course_deg": round(post_course, 1),
                 "entry_speed_kt": round(entry_speed, 2),
                 "min_speed_kt": round(min_speed, 2),
                 "exit_speed_kt": round(exit_speed, 2),
@@ -294,6 +346,7 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
         for p in prepared
     ]
 
+    wind_from = normalize_degrees(settings.wind_from_deg) if settings.wind_from_deg is not None else None
     return {
         "summary": {
             "start_utc": start_time.isoformat(),
@@ -304,6 +357,8 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
             "mean_moving_speed_kt": round(_mean(moving_speeds), 2) if moving_speeds else 0.0,
             "gps_points": len(points),
             "detected_turns": len(gybes),
+            "detected_gybes": sum(1 for g in gybes if g["maneuver"] == "gybe"),
+            "detected_tacks": sum(1 for g in gybes if g["maneuver"] == "tack"),
             "planning_through": sum(1 for g in gybes if g["planning_through"]),
         },
         "settings": {
@@ -311,6 +366,12 @@ def analyze(points: list[TrackPoint], settings: AnalyzerSettings | None = None) 
             "min_entry_speed_kt": settings.min_entry_speed_kt,
             "min_exit_speed_kt": settings.min_exit_speed_kt,
             "planning_threshold_kt": settings.planning_threshold_kt,
+            "wind_from_deg": round(wind_from, 1) if wind_from is not None else None,
+        },
+        "wind": {
+            "from_deg": round(wind_from, 1) if wind_from is not None else None,
+            "to_deg": round(normalize_degrees(wind_from + 180.0), 1) if wind_from is not None else None,
+            "source": "manual" if wind_from is not None else "unknown",
         },
         "track": track,
         "gybes": gybes,
