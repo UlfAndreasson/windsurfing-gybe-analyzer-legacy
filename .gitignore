@@ -8,3 +8,4 @@ data/*.FIT
 data/*.zip
 data/*.ZIP
 !data/.gitkeep
+data/sessions/
