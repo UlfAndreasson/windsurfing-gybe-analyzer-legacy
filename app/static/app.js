@@ -76,7 +76,8 @@ async function runAnalysis() {
     selectedPointIndex = null;
     navigationMode = "gybes";
     renderAll();
-    setStatus(`${payload.summary.gps_points} GPS-punkter · ${payload.summary.detected_turns} svängkandidater · sparad lokalt`);
+    const wind = windSummary();
+    setStatus(`${payload.summary.gps_points} GPS-punkter · ${payload.summary.detected_turns} svängkandidater · ${wind} · sparad lokalt`);
     await refreshSavedSessions(activeSessionId);
   } catch (err) {
     setStatus(err.message, true);
@@ -107,7 +108,7 @@ async function refreshSavedSessions(selectId = null) {
     if (selectId && [...select.options].some((o) => o.value === selectId)) select.value = selectId;
     $("loadSavedBtn").disabled = !select.value;
   } catch (_) {
-    // Persistence is a convenience; a list failure must not block fresh analysis.
+    // Persistence is optional; a list failure must not block analysis.
   }
 }
 
@@ -131,7 +132,7 @@ async function loadSelectedSession() {
     selectedPointIndex = null;
     navigationMode = "gybes";
     renderAll();
-    setStatus(`${payload.summary.gps_points} GPS-punkter · ${payload.summary.detected_turns} svängkandidater · laddad från disk`);
+    setStatus(`${payload.summary.gps_points} GPS-punkter · ${payload.summary.detected_turns} svängkandidater · ${windSummary()}`);
   } catch (err) {
     setStatus(err.message, true);
   } finally {
@@ -144,7 +145,8 @@ function applySettings(settings) {
   if (settings.min_entry_speed_kt !== undefined) $("entrySpeed").value = settings.min_entry_speed_kt;
   if (settings.min_exit_speed_kt !== undefined) $("exitSpeed").value = settings.min_exit_speed_kt;
   if (settings.planning_threshold_kt !== undefined) $("planningSpeed").value = settings.planning_threshold_kt;
-  $("windFrom").value = settings.wind_from_deg ?? "";
+  // Do not populate an automatically estimated wind value into the manual override field.
+  $("windFrom").value = analysis?.wind?.source === "manual" ? (settings.wind_from_deg ?? "") : "";
 }
 
 function metric(label, value) {
@@ -158,6 +160,12 @@ function fmtDuration(sec) {
 function localTime(iso) { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
 function directionLabel(g) { return g.direction === "right" ? "Höger/SB" : "Vänster/BB"; }
 function maneuverLabel(g) { return g.maneuver === "gybe" ? "Gipp" : g.maneuver === "tack" ? "Tack" : "Okänd"; }
+function fmtSeconds(value) { return value == null ? "–" : `${Number(value).toFixed(1)} s`; }
+function windSummary() {
+  if (analysis?.wind?.from_deg == null) return "vind okänd";
+  if (analysis.wind.source === "manual") return `vind ${analysis.wind.from_deg.toFixed(0)}°T (manuell)`;
+  return `vind ≈ ${analysis.wind.from_deg.toFixed(0)}°T (${analysis.wind.confidence ?? 0}% est.)`;
+}
 
 function renderAll() {
   $("results").classList.remove("hidden");
@@ -169,7 +177,7 @@ function renderAll() {
     metric("Max", `${s.max_speed_kt.toFixed(1)} kt`),
     metric("GPS-punkter", s.gps_points),
     metric(analysis.wind?.from_deg == null ? "Svängar" : "Gipp / Tack", typeMetric),
-    metric(`Planing ≥ ${analysis.settings.planning_threshold_kt} kt`, s.planning_through),
+    metric("Vind", analysis.wind?.from_deg == null ? "–" : `${analysis.wind.source === "estimated" ? "≈ " : ""}${analysis.wind.from_deg.toFixed(0)}°T`),
   ].join("");
   renderTrack();
   renderTable();
@@ -218,8 +226,8 @@ function renderTable() {
     tr.innerHTML = `
       <td>${g.id}</td><td>${localTime(g.time_utc)}</td><td>${maneuverLabel(g)}</td><td>${directionLabel(g)}</td>
       <td>${g.entry_speed_kt.toFixed(1)}</td><td>${g.min_speed_kt.toFixed(1)}</td><td>${g.exit_speed_kt.toFixed(1)}</td>
-      <td>${g.exit_retention_pct?.toFixed(0) ?? "–"}%</td><td>${Math.abs(g.course_change_deg).toFixed(0)}°</td><td>${g.duration_s.toFixed(1)} s</td>
-      <td>${g.effective_radius_m?.toFixed(1) ?? "–"} m</td><td>${g.confidence}%</td>`;
+      <td>${g.exit_retention_pct?.toFixed(0) ?? "–"}%</td><td>${fmtSeconds(g.time_to_planing_s)}</td><td>${fmtSeconds(g.time_to_90pct_entry_s)}</td>
+      <td>${Math.abs(g.course_change_deg).toFixed(0)}°</td><td>${g.duration_s.toFixed(1)} s</td><td>${g.effective_radius_m?.toFixed(1) ?? "–"} m</td><td>${g.confidence}%</td>`;
     tr.addEventListener("click", () => { navigationMode = "gybes"; $("gybeTable").focus(); selectGybe(g.id); });
     body.appendChild(tr);
   });
@@ -244,12 +252,20 @@ function selectGybe(id, scroll = true) {
   $("detailPanel").classList.remove("hidden");
   const type = maneuverLabel(g);
   $("detailTitle").textContent = `${type === "Okänd" ? "Sväng" : type} #${g.id}`;
-  const windText = analysis.wind?.from_deg == null ? "vind ej satt" : `vind från ${analysis.wind.from_deg.toFixed(0)}°T`;
-  $("detailSubtitle").textContent = `${localTime(g.time_utc)} · ${directionLabel(g)} · ${windText} · confidence ${g.confidence}%`;
+  $("detailSubtitle").textContent = `${localTime(g.time_utc)} · ${directionLabel(g)} · ${windSummary()} · confidence ${g.confidence}%`;
   $("detailMetrics").innerHTML = [
-    metric("In", `${g.entry_speed_kt.toFixed(1)} kt`), metric("Minimum", `${g.min_speed_kt.toFixed(1)} kt`),
-    metric("Ut", `${g.exit_speed_kt.toFixed(1)} kt`), metric("Ut/In", `${g.exit_retention_pct?.toFixed(0) ?? "–"}%`),
-    metric("Δ kurs", `${Math.abs(g.course_change_deg).toFixed(0)}°`), metric("Effektiv radie", `${g.effective_radius_m?.toFixed(1) ?? "–"} m`),
+    metric("In", `${g.entry_speed_kt.toFixed(1)} kt`),
+    metric("Minimum", `${g.min_speed_kt.toFixed(1)} kt`),
+    metric("Ut", `${g.exit_speed_kt.toFixed(1)} kt`),
+    metric("Ut/In", `${g.exit_retention_pct?.toFixed(0) ?? "–"}%`),
+    metric("Till planing", fmtSeconds(g.time_to_planing_s)),
+    metric("Till 90% In", fmtSeconds(g.time_to_90pct_entry_s)),
+    metric("+5 s", g.speed_5s_after_kt == null ? "–" : `${g.speed_5s_after_kt.toFixed(1)} kt`),
+    metric("+10 s", g.speed_10s_after_kt == null ? "–" : `${g.speed_10s_after_kt.toFixed(1)} kt`),
+    metric("Δ kurs", `${Math.abs(g.course_change_deg).toFixed(0)}°`),
+    metric("Effektiv radie", `${g.effective_radius_m?.toFixed(1) ?? "–"} m`),
+    metric("Till planing dist", g.distance_to_planing_m == null ? "–" : `${g.distance_to_planing_m.toFixed(0)} m`),
+    metric("Planing igen", g.planning_recovered ? "Ja" : "Ej inom 30 s"),
   ].join("");
   renderTrack();
   renderArc(g);
@@ -284,16 +300,15 @@ function drawWindArrow(svg, windFromDeg) {
   const x1 = cx - dx * length / 2, y1 = cy - dy * length / 2;
   const x2 = cx + dx * length / 2, y2 = cy + dy * length / 2;
   svg.appendChild(svgEl("line", { x1, y1, x2, y2, class: "wind-line" }));
-  const side = 8, back = 14;
-  const px = -dy, py = dx;
+  const side = 8, back = 14, px = -dy, py = dx;
   const points = [
     [x2, y2],
     [x2 - dx * back + px * side, y2 - dy * back + py * side],
     [x2 - dx * back - px * side, y2 - dy * back - py * side],
   ].map((p) => p.join(",")).join(" ");
   svg.appendChild(svgEl("polygon", { points, class: "wind-arrowhead" }));
-  const label = svgEl("text", { x: 390, y: 24, class: "wind-label" });
-  label.textContent = `Vind från ${windFromDeg.toFixed(0)}°T`;
+  const label = svgEl("text", { x: 350, y: 24, class: "wind-label" });
+  label.textContent = `${analysis.wind?.source === "estimated" ? "Vind ≈" : "Vind från"} ${windFromDeg.toFixed(0)}°T${analysis.wind?.source === "estimated" ? ` · ${analysis.wind.confidence ?? 0}%` : ""}`;
   svg.appendChild(label);
 }
 
@@ -308,11 +323,12 @@ function renderArc(g) {
   for (let i = 0; i < pts.length - 1; i++) {
     const a = pts[i], b = pts[i + 1], [x1, y1] = map(a.x, a.y), [x2, y2] = map(b.x, b.y);
     const turn = a.phase === "turn" || b.phase === "turn";
+    const recovery = a.phase === "recovery" || b.phase === "recovery";
     svg.appendChild(svgEl("line", {
       x1, y1, x2, y2,
       stroke: speedColor((a.speed_kt + b.speed_kt) / 2, minSpeed, maxSpeed),
-      "stroke-width": turn ? 5 : 3,
-      opacity: turn ? 1 : 0.35,
+      "stroke-width": turn ? 5 : recovery ? 4 : 3,
+      opacity: turn ? 1 : recovery ? 0.8 : 0.32,
       "stroke-linecap": "round",
     }));
   }
@@ -337,7 +353,8 @@ function renderSpeed(g) {
   const pts = g.points;
   if (pts.length < 2) return;
   const w = 600, h = 420, pad = 48;
-  const minT = Math.min(...pts.map((p) => p.t)), maxT = Math.max(...pts.map((p) => p.t)), maxS = Math.max(5, ...pts.map((p) => p.speed_kt)) * 1.1;
+  const minT = Math.min(...pts.map((p) => p.t)), maxT = Math.max(...pts.map((p) => p.t));
+  const maxS = Math.max(5, ...pts.map((p) => p.speed_kt), analysis.settings.planning_threshold_kt) * 1.1;
   const xy = (t, s) => [pad + (t - minT) / (maxT - minT || 1) * (w - 2 * pad), h - pad - s / maxS * (h - 2 * pad)];
   [0, .25, .5, .75, 1].forEach((q) => {
     const y = h - pad - q * (h - 2 * pad);
@@ -346,6 +363,11 @@ function renderSpeed(g) {
   });
   const [zx] = xy(0, 0);
   svg.appendChild(svgEl("line", { x1: zx, y1: pad, x2: zx, y2: h - pad, class: "gridline" }));
+  const [, planY] = xy(minT, analysis.settings.planning_threshold_kt);
+  svg.appendChild(svgEl("line", { x1: pad, y1: planY, x2: w - pad, y2: planY, class: "gridline", "stroke-dasharray": "6 5" }));
+  const planLabel = svgEl("text", { x: w - pad - 105, y: planY - 6, class: "axis-label" });
+  planLabel.textContent = `planing ${analysis.settings.planning_threshold_kt} kt`; svg.appendChild(planLabel);
+
   svg.appendChild(svgEl("polyline", { class: "plot-line", points: pts.map((p) => xy(p.t, p.speed_kt).join(",")).join(" ") }));
   pts.forEach((p, index) => {
     const [x, y] = xy(p.t, p.speed_kt);
@@ -354,6 +376,18 @@ function renderSpeed(g) {
     if (index === selectedPointIndex) svg.appendChild(svgEl("circle", { cx: x, cy: y, r: 8, class: "point-highlight" }));
   });
   const lbl = svgEl("text", { x: zx + 6, y: pad + 14, class: "axis-label" }); lbl.textContent = "t=0: minfart"; svg.appendChild(lbl);
+
+  if (g.time_to_planing_s != null) {
+    const [rx] = xy(g.time_to_planing_s, 0);
+    svg.appendChild(svgEl("line", { x1: rx, y1: pad, x2: rx, y2: h - pad, class: "gridline", "stroke-dasharray": "4 4" }));
+    const rt = svgEl("text", { x: Math.min(rx + 5, w - 125), y: pad + 30, class: "axis-label" });
+    rt.textContent = `planing +${g.time_to_planing_s.toFixed(1)}s`; svg.appendChild(rt);
+  }
+  if (g.time_to_90pct_entry_s != null && Math.abs((g.time_to_90pct_entry_s ?? 0) - (g.time_to_planing_s ?? -99)) > 0.5) {
+    const [rx] = xy(g.time_to_90pct_entry_s, 0);
+    const rt = svgEl("text", { x: Math.min(rx + 5, w - 115), y: pad + 48, class: "axis-label" });
+    rt.textContent = `90% In +${g.time_to_90pct_entry_s.toFixed(1)}s`; svg.appendChild(rt);
+  }
 }
 
 function renderPoints(g) {
@@ -363,7 +397,8 @@ function renderPoints(g) {
     const tr = document.createElement("tr");
     tr.dataset.index = index;
     if (index === selectedPointIndex) tr.classList.add("selected");
-    tr.innerHTML = `<td>${p.t > 0 ? "+" : ""}${p.t}s</td><td>${p.speed_kt.toFixed(1)} kt</td><td>${p.course_deg === null ? "–" : p.course_deg.toFixed(0) + "°"}</td><td>${p.turn_rate_dps === null ? "–" : p.turn_rate_dps.toFixed(1) + "°/s"}</td><td>${p.phase === "turn" ? "sväng" : "kontext"}</td>`;
+    const phase = p.phase === "turn" ? "sväng" : p.phase === "recovery" ? "återhämtning" : "kontext";
+    tr.innerHTML = `<td>${p.t > 0 ? "+" : ""}${p.t}s</td><td>${p.speed_kt.toFixed(1)} kt</td><td>${p.course_deg === null ? "–" : p.course_deg.toFixed(0) + "°"}</td><td>${p.turn_rate_dps === null ? "–" : p.turn_rate_dps.toFixed(1) + "°/s"}</td><td>${phase}</td>`;
     tr.addEventListener("click", () => { navigationMode = "points"; $("pointsTable").focus(); selectPoint(index); });
     body.appendChild(tr);
   });
