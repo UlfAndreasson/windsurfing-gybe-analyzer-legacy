@@ -4,30 +4,37 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Windsurfing Gybe Analyzer</title>
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=0.4.0" />
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
       <div>
         <h1>Windsurfing Gybe Analyzer</h1>
-        <p>Garmin FIT → svängdetektion → fart, kurs, radie och retention per gipp.</p>
+        <p>Garmin FIT → svängdetektion → fart, kurs, radie och retention per gipp/tack.</p>
       </div>
-      <span class="version">v0.3.1</span>
+      <span class="version">v0.4.0</span>
     </header>
 
     <section class="panel import-panel">
+      <div class="saved-row">
+        <label for="savedSessions">Tidigare analyser</label>
+        <select id="savedSessions"><option value="">Inga sparade analyser</option></select>
+        <button id="loadSavedBtn" class="secondary" disabled>Ladda</button>
+      </div>
       <div id="dropzone" class="dropzone">
         <strong>Släpp Garmin .FIT eller export-.ZIP här</strong>
         <span>eller klicka för att välja fil</span>
         <input id="fileInput" type="file" accept=".fit,.zip,application/zip" hidden />
       </div>
-      <div class="settings-grid">
+      <div class="settings-grid five">
         <label>Kursändring minst <input id="courseChange" type="number" value="105" min="60" max="180" step="5"> °</label>
         <label>Ingång minst <input id="entrySpeed" type="number" value="4" min="0" max="40" step="0.5"> kt</label>
         <label>Exit minst <input id="exitSpeed" type="number" value="1.5" min="0" max="40" step="0.5"> kt</label>
         <label>Planing-gräns <input id="planningSpeed" type="number" value="8" min="0" max="40" step="0.5"> kt</label>
+        <label>Vind från <input id="windFrom" type="number" min="0" max="359" step="1" placeholder="t.ex. 250"> °T</label>
       </div>
+      <p class="setting-note">Vindriktning behövs för säker klassning Gipp/Tack och för vindpilen. Utan den visar appen typen som Okänd.</p>
       <div class="actions">
         <span id="filename">Ingen fil vald</span>
         <button id="analyzeBtn" disabled>Analysera</button>
@@ -41,34 +48,44 @@
       <section class="panel">
         <div class="section-heading">
           <div><h2>Session</h2><p>Klicka på en numrerad sväng eller en rad i tabellen.</p></div>
-          <span class="hint">Spårdiagrammet är lokalt XY i meter; baskarta kommer i nästa version.</span>
+          <span class="hint">↑/↓ stegar mellan svängarna när svängtabellen är aktiv.</span>
         </div>
         <div class="chart-frame track-frame"><svg id="trackSvg" viewBox="0 0 1000 540"></svg></div>
       </section>
 
       <section class="panel">
-        <div class="section-heading"><div><h2>Detekterade svängar</h2><p>V0.3 kallar alla stora tack-byten för kandidater; gybe/tack klassificeras i nästa steg.</p></div></div>
-        <div class="table-wrap"><table id="gybeTable">
-          <thead><tr><th>#</th><th>Tid</th><th>Riktning</th><th>In</th><th>Min</th><th>Ut</th><th>Ut/In</th><th>Δ kurs</th><th>Tid</th><th>Radie*</th><th>Confidence</th></tr></thead>
+        <div class="section-heading">
+          <div><h2>Detekterade svängar</h2><p>Vänster/BB = babordssväng. Höger/SB = styrbordssväng.</p></div>
+          <span class="hint">Klicka i tabellen och använd ↑/↓.</span>
+        </div>
+        <div class="table-wrap"><table id="gybeTable" tabindex="0" aria-label="Detekterade svängar">
+          <thead><tr><th>#</th><th>Tid</th><th>Typ</th><th>Riktning</th><th>In</th><th>Min</th><th>Ut</th><th>Ut/In</th><th>Δ kurs</th><th>Tid</th><th>Radie*</th><th>Confidence</th></tr></thead>
           <tbody></tbody>
         </table></div>
         <p class="footnote">* Effektiv radie = sträcka genom svängen / kursändring i radianer. Med 1 Hz GPS är den en uppskattning.</p>
       </section>
 
       <section id="detailPanel" class="panel hidden">
-        <div class="section-heading"><div><h2 id="detailTitle">Gipp</h2><p id="detailSubtitle"></p></div></div>
+        <div class="section-heading">
+          <div><h2 id="detailTitle">Gipp</h2><p id="detailSubtitle"></p></div>
+          <span class="hint">Klicka på en sekundrad nedan och använd ↑/↓ för att stega genom svängen.</span>
+        </div>
         <div id="detailMetrics" class="summary-grid compact"></div>
         <div class="detail-grid">
-          <div><h3>Svängens GPS-ark</h3><div class="chart-frame"><svg id="arcSvg" viewBox="0 0 600 420"></svg></div></div>
+          <div>
+            <h3>Svängens GPS-ark</h3>
+            <div class="chart-frame"><svg id="arcSvg" viewBox="0 0 600 420"></svg></div>
+            <div class="speed-scale"><span>Långsamt</span><span></span><span>Snabbt</span></div>
+          </div>
           <div><h3>Fart sekund för sekund</h3><div class="chart-frame"><svg id="speedSvg" viewBox="0 0 600 420"></svg></div></div>
         </div>
-        <div class="table-wrap"><table id="pointsTable">
+        <div class="table-wrap"><table id="pointsTable" tabindex="0" aria-label="Sekunddata för vald sväng">
           <thead><tr><th>t från min</th><th>Fart</th><th>Kurs</th><th>Turn rate</th><th>Fas</th></tr></thead>
           <tbody></tbody>
         </table></div>
       </section>
     </section>
   </main>
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=0.4.0"></script>
 </body>
 </html>
