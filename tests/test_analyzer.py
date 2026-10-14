@@ -1,12 +1,11 @@
 import math
 import unittest
 
-from app.analyzer import AnalyzerSettings, angular_difference, analyze
+from app.analyzer import AnalyzerSettings, angular_difference, analyze, classify_maneuver
 from app.fitlite import TrackPoint
 
 
 def synthetic_turn() -> list[TrackPoint]:
-    # Straight north, smooth 180 degree clockwise U-turn, straight south.
     points=[]; lat0=57.65; lon0=11.85; t0=1_000_000; x=0.0; y=0.0; heading=0.0; distance=0.0
     for i in range(70):
         if i < 25: heading=0.0
@@ -28,13 +27,19 @@ class AnalyzerTests(unittest.TestCase):
         self.assertAlmostEqual(angular_difference(350, 10), 20)
         self.assertAlmostEqual(angular_difference(10, 350), -20)
 
+    def test_classify_maneuver(self):
+        self.assertEqual(classify_maneuver(0, 180, 270)["maneuver"], "gybe")
+        self.assertEqual(classify_maneuver(0, 180, 90)["maneuver"], "tack")
+        self.assertEqual(classify_maneuver(0, 180, None)["maneuver"], "unknown")
+
     def test_detects_synthetic_u_turn(self):
-        result=analyze(synthetic_turn(), AnalyzerSettings(min_course_change_deg=100,min_entry_speed_kt=4,min_exit_speed_kt=2))
+        result=analyze(synthetic_turn(), AnalyzerSettings(min_course_change_deg=100,min_entry_speed_kt=4,min_exit_speed_kt=2,wind_from_deg=270))
         self.assertGreaterEqual(len(result["gybes"]),1)
         best=max(result["gybes"], key=lambda g: abs(g["course_change_deg"]))
         self.assertGreater(abs(best["course_change_deg"]),140)
         self.assertGreater(best["entry_speed_kt"],10)
         self.assertGreater(best["effective_radius_m"],0)
+        self.assertEqual(best["maneuver"], "gybe")
 
 
 if __name__ == "__main__":
