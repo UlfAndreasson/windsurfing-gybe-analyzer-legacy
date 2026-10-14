@@ -1,6 +1,8 @@
 # Windsurfing Gybe Analyzer
 
-Local Garmin FIT analyzer for detailed windsurfing gybe/tack analysis on macOS.
+Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
+
+The repository is the canonical source for the analysis logic. It can be run locally on macOS, while the Lovable app provides the cloud/web UI around the same analysis concepts.
 
 ## What it does
 
@@ -9,14 +11,35 @@ Local Garmin FIT analyzer for detailed windsurfing gybe/tack analysis on macOS.
 - shows entry, minimum and exit speed for every detected turn
 - calculates speed retention, course change, duration, turn distance, max turn rate and estimated effective radius
 - shows the GPS arc and speed second-by-second for every turn
-- colors the GPS arc continuously by speed: blue → green → yellow → red
+- measures recovery after the turn: time/distance back to planing, time to 90% of entry speed and speed at +5/+10 seconds
+- estimates wind direction automatically, with optional manual `Vind från` override
+- can classify `Gipp` vs `Tack` when wind direction is known
+- supports a display-only `Min ingång` filter without re-running detection
 - supports keyboard navigation through turns and through second-by-second data
 - stores source files and analyses locally between app restarts
-- can classify `Gipp` vs `Tack` and draw a wind arrow when `Vind från` is supplied
 
-Everything runs locally on the Mac. Uploaded Garmin files are stored under `data/sessions/` and are not sent anywhere.
+## Local app vs cloud app
 
-## Run
+The commands below are only needed if you want to run or test the **local Mac version**.
+
+You do **not** need to run `git pull` or `./run.sh` to use the published Lovable/web app.
+
+Local update and start:
+
+```bash
+cd ~/_code_local/windsurfing-gybe-analyzer
+git pull
+./run.sh
+```
+
+This does two things:
+
+1. `git pull` downloads the latest repository changes to the Mac.
+2. `./run.sh` starts the local analyzer at `http://127.0.0.1:8776`.
+
+If you only use the cloud/web app, skip these commands.
+
+## Run locally
 
 ```bash
 cd ~/_code_local/windsurfing-gybe-analyzer
@@ -35,26 +58,29 @@ The port can be overridden:
 GYBE_PORT=8780 ./run.sh
 ```
 
-## Update
+Everything in the local version runs on the Mac. Uploaded Garmin files are stored under `data/sessions/` and are not sent anywhere.
 
-```bash
-cd ~/_code_local/windsurfing-gybe-analyzer
-git pull
-./run.sh
-```
+## Detection threshold vs display filter
+
+These are intentionally separate controls:
+
+- `Ingång minst` affects analysis/detection and therefore requires analysis/re-analysis.
+- `Min ingång` only filters already detected turns in the UI; it does not alter the analysis.
+
+The display filter applies consistently to map markers, the turn table and `↑` / `↓` navigation.
 
 ## Wind direction and Gipp/Tack
 
-GPS alone shows course and turn direction, but it cannot determine which end of the wind axis the wind comes from. There is a 180° ambiguity. Therefore the app only labels a turn as `Gipp` or `Tack` when **Vind från (°T)** is supplied.
+GPS alone shows course and turn direction but has a 180° wind-axis ambiguity. The analyzer can estimate the wind direction automatically from stable planing courses. A manually supplied **Vind från (°T)** overrides that estimate.
 
 Example: if the wind comes from 250° true, enter `250`.
 
-The classification then uses the course at the midpoint of the actual turn:
+When wind direction is known, the turn midpoint is compared with the wind axis:
 
 - midpoint nearest **wind-from** → Tack
 - midpoint nearest **wind-to** → Gipp
 
-The wind arrow on the GPS arc is only shown when the wind direction is known. The label states `Vind från xxx°T`; the arrowhead points downwind.
+The wind arrow on the GPS arc is shown when the wind direction is known. The arrowhead points downwind.
 
 ## Keyboard navigation
 
@@ -64,7 +90,7 @@ The wind arrow on the GPS arc is only shown when the wind direction is known. Th
 
 ## Saved sessions
 
-Every successful analysis is automatically persisted in:
+Every successful local analysis is automatically persisted in:
 
 ```text
 data/sessions/<file-hash>/
@@ -93,6 +119,10 @@ With 1 Hz GPS it is an estimate intended primarily for comparing turns with each
 
 ## Development
 
+Prefer normal Git/GitHub/GitHub Actions workflows for code, tests, CI and documentation. Lovable should only be used for Lovable-specific runtime, backend/integration and publishing tasks.
+
+Functional changes should update the relevant README/CHANGELOG/docs in the same workstream.
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -103,4 +133,4 @@ python -m unittest discover -s tests -v
 
 ## Current version
 
-v0.4.0
+v0.5.1
