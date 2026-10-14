@@ -1,4 +1,4 @@
-# Windsurfing Gybe Analyzer — v0.52
+# Windsurfing Gybe Analyzer — v0.53
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
@@ -14,13 +14,13 @@ The Python/FastAPI implementation in this repository remains the reference for G
 
 The cloud app uses email/password authentication. Email auto-confirm is currently enabled because the shared/default auth sender did not reliably deliver confirmation messages. New accounts can therefore sign in immediately after signup. If a custom SMTP sender is added later, email confirmation can be enabled again.
 
-## v0.52 cloud features
+## v0.53 cloud features
 
 - imports Garmin `.FIT` files or Garmin Connect export `.ZIP` files
 - saves private sessions per user and lets you select/re-analyze earlier sessions
 - detects large course changes from 1 Hz GPS data
 - shows entry, minimum and exit speed, retention, course change, turn distance, max turn rate and estimated effective radius
-- shows the selected maneuver second-by-second with speed-coloured GPS arc and speed graph
+- shows the selected maneuver second-by-second with speed-coloured `Svängspår` and speed graph
 - supports `Vänster/BB` and `Höger/SB` direction labels
 - supports ↑/↓ navigation between turns and through second-by-second data
 - has a display-only `Min ingång` filter that does not re-run detection; when no detected turn matches, the hint is shown inline on the slider row
@@ -28,8 +28,20 @@ The cloud app uses email/password authentication. Email auto-confirm is currentl
 - shows wind source/confidence and a wind arrow that points downwind
 - flags conservative `Misstänkt bad/fall` cases without asserting them as fact
 - flags `Stallad/långsam vändning` separately when a planing entry nearly stops but sustained planing returns within 20 seconds
-- shows the rich `Detekterade svängar` table as one data row per maneuver, with compact two-line header labels; the compact `Svänglista` and selected-turn detail remain separate synchronized views
+- shows the rich `Detekterade svängar` table as one data row per maneuver, with compact two-line header labels and a narrow status-icon column
+- keeps the compact synchronized `Svänglista` balanced across `#`, status, Typ, Riktning, Till planing and Radie*
 - offers System, Ljust, Mörkt and `Custom mörkt`; the existing stored value `lovable-dark` is kept for backward compatibility
+
+### v0.53 UI refinements
+
+- slightly larger session metadata while retaining responsive wrapping
+- `Vänd vind 180°` lives inside `Analysinställningar`
+- the visible `Sparad i molnet` badge is removed; cloud saving behavior is unchanged
+- `Svängens GPS-ark` is renamed to **Svängspår**
+- `Svängspår` initially frames the actual maneuver/min-speed area instead of letting a long recovery tail flatten the turn visually
+- `+`, `−`, mouse-wheel/trackpad zoom and panning are supported; `Återställ` returns to the full displayed maneuver path
+- zoom is view-only and does not mutate source data, turn detection, speed colours, wind overlay or second-by-second keyboard navigation
+- cloud regression suite: 57/57 tests passing; saved-session browser checks passed at 1440 and 1280 px without page-level horizontal overflow
 
 ## Recovery after the maneuver
 
@@ -43,7 +55,7 @@ For each detected turn it derives recovery from the saved full session track, bo
 - time to 90% of entry speed
 - speed at +5 s and +10 s
 
-If both planing and 90% entry speed are reached, the detailed GPS arc, speed graph and second-by-second table continue for at least 10 seconds after the later marker, without passing the next maneuver/session boundary. If either target is not reached, the detail continues all the way to that boundary.
+If both planing and 90% entry speed are reached, the detailed Svängspår, speed graph and second-by-second table continue for at least 10 seconds after the later marker, without passing the next maneuver/session boundary. If either target is not reached, the detail continues all the way to that boundary.
 
 The status therefore says `Ja · X s`, `Ej före nästa sväng` or `Ej före passets slut` instead of the old `Ej inom 30 s`.
 
