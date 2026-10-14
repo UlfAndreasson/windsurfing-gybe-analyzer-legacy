@@ -1,12 +1,22 @@
 # Changelog
 
-## 0.5.1 - 2026-10-14
+## v0.51 - 2026-10-14
 
-- Add display-only `Min ingång` slider for filtering detected turns by entry speed.
-- Keep the filter separate from the analyzer's `Ingång minst` detection threshold: moving the slider never re-runs analysis.
-- Apply the filter consistently to map markers, turn table and ↑/↓ turn navigation.
-- Automatically move selection to the first visible turn when the current turn is filtered out.
-- Show a clear empty state when no detected turns match the display filter.
+- Add display-only `Min ingång` slider for filtering detected turns by entry speed without re-running analysis.
+- Extend cloud recovery detail beyond 30 seconds using the saved full session track, bounded by the next maneuver or session end.
+- Show truthful recovery status: exact planing time, `Ej före nästa sväng` or `Ej före passets slut`.
+- Add time from turn end to planing and preserve detail through the recovery/failed-recovery period.
+- Make maneuver metric cards more compact and enlarge the selected-session miniature.
+- Add wind arrows to the session miniature and full session view.
+- Add a geographic Leaflet/OpenStreetMap session map with speed-coloured track, clickable maneuver markers and SVG fallback.
+- Improve cloud Gipp/Tack display classification using course samples through the turn instead of midpoint alone; ignore very-low-speed noisy COG.
+- Show uncertain classifications as `Gipp?`, `Tack?` or `Okänd` with classification confidence.
+- Show the alternative 180° wind direction for non-strong GPS estimates and add `Vänd vind 180°` to re-run the active session with the opposite manual wind direction.
+- Add conservative `Misstänkt bad/fall` display flag.
+- Rename visible `Lovable mörkt` theme to `Custom mörkt` while preserving the stored `lovable-dark` preference.
+- Set visible cloud version to `v0.51` and standardize README heading.
+- Keep map privacy explicit: FIT/ZIP and full track are not sent to the tile provider; normal OpenStreetMap tile requests reveal the viewed area/IP as with a normal web map.
+- Cloud regression suite: 38 tests passing after the recovery-boundary correction.
 
 ## 0.5.0 - 2026-10-14
 
