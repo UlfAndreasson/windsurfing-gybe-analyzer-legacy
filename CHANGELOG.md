@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.54 - 2026-10-14
+
+- Simplify the Gipp/Tack summary card to plain Swedish wording: `16 gippar · 3 tack`.
+- Show only one small secondary line: `2 osäkra · 2 okända`.
+- Remove ambiguous visible `16/3`, separate `Gipp 16` / `Tack 3` labels and visible `Gipp? / Tack?` split from the summary card.
+- Keep the uncertain Gipp?/Tack? split only in tooltip/aria metadata.
+- Keep the card compact and aligned with the other summary cards.
+- Cloud regression suite: 59/59 tests passing.
+
 ## v0.53 - 2026-10-14
 
 - Increase session metadata readability and keep responsive wrapping.
@@ -16,7 +25,7 @@
 - Restore the rich `Detekterade svängar` table to one body row per maneuver with all 18 values; only header labels wrap onto two lines for compactness.
 - Keep the compact synchronized `Svänglista` and selected-turn detail layout unchanged.
 - Move the zero-match `Min ingång` hint onto the same row as the slider and `0 / N svängar` count instead of showing it as a separate block below.
-- Add a separate view-only `Stallad/långsam vändning` coaching flag: planing entry, at least two consecutive samples ≤4 kt with at least one ≤3 kt, followed by sustained planing recovery within 20 s. `Misstänkt bad/fall` takes precedence.
+- Add a separate view-only `Stallad/långsam vändning` coaching flag: planing entry, at least 2 consecutive samples ≤4 kt with at least one ≤3 kt, followed by sustained planing recovery within 20 s. `Misstänkt bad/fall` takes precedence.
 - Preserve the warning triangle for suspected bad/fall and use a separate amber `S` marker for stalled/slow turns.
 
 ## v0.51 - 2026-10-14
