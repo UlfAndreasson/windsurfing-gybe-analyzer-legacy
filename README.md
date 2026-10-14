@@ -1,4 +1,9 @@
-# Windsurfing Gybe Analyzer
+<table>
+<tr>
+<td><h1>Windsurfing Gybe Analyzer</h1></td>
+<td align="right"><strong>Current version v0.5.1</strong></td>
+</tr>
+</table>
 
 Garmin FIT analyzer for detailed windsurfing gybe/tack analysis.
 
@@ -62,6 +67,8 @@ The display filter applies consistently to map markers, the turn table and `↑`
 
 ## Wind direction and Gipp/Tack
 
+The FIT track contains GPS latitude/longitude positions, so the app can determine where the session happened and use that location when looking for external wind data.
+
 GPS alone shows course and turn direction but has a 180° wind-axis ambiguity. The analyzer can estimate the wind direction automatically from stable planing courses. A manually supplied **Vind från (°T)** overrides that estimate.
 
 Example: if the wind comes from 250° true, enter `250`.
@@ -75,9 +82,18 @@ The wind arrow on the GPS arc is shown when the wind direction is known. The arr
 
 ### External wind-data enrichment
 
-A planned enhancement is to use external spot/station wind data as an additional input to the automatic estimate. For Fiskebäck the relevant Windguru resources are spot `1110010` and the GWC live station. External data should be treated as a **supporting prior**, not as a replacement for the GPS-derived estimate: compare the external wind direction with the two possible GPS wind-axis directions, choose the compatible side of the 180° ambiguity, and show the source/confidence in the UI. Manual `Vind från` must remain the final override.
+External spot/station data should be selected from the activity location, not from a hard-coded spot ID. The intended flow is:
 
-For historical sessions, only use Windguru data when a matching historical observation/forecast is actually available for the activity timestamp; current forecast data must never be silently applied to an old session.
+1. derive a representative GPS position / session centroid from the FIT track;
+2. look for a nearby Windguru spot or station for that latitude/longitude and activity timestamp;
+3. use matching station/forecast wind direction only as a supporting prior;
+4. compare it with the two possible GPS wind-axis directions to resolve the 180° ambiguity;
+5. show `Vindkälla` and confidence in the UI;
+6. keep manual `Vind från` as the final override.
+
+For Fiskebäck, spot `1110010` and the GWC station are relevant examples, but the implementation must work worldwide and must not assume Fiskebäck.
+
+For historical sessions, only use external data when a matching historical observation/forecast is actually available for the activity timestamp. Current forecast data must never be silently applied to an old session.
 
 ## Keyboard navigation
 
@@ -127,7 +143,3 @@ python -m pip install -r requirements.txt
 python -m unittest discover -s tests -v
 ./run-dev.sh
 ```
-
-## Current version
-
-v0.5.1
